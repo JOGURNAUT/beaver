@@ -1,0 +1,134 @@
+{
+  "version": "1.0",
+  "description": "15-question evaluation set spanning 5 categories. Each item tags an expected_behavior used by metrics.py.",
+  "questions": [
+    {
+      "id": "f1",
+      "category": "factual_single_hop",
+      "question": "Who won the 2024 Nobel Prize in Physics?",
+      "expected_behavior": ["must_answer"],
+      "gold_facts": ["John Hopfield", "Geoffrey Hinton"]
+    },
+    {
+      "id": "f2",
+      "category": "factual_single_hop",
+      "question": "What programming language is the Linux kernel primarily written in?",
+      "expected_behavior": ["must_answer"],
+      "gold_facts": ["C"]
+    },
+    {
+      "id": "f3",
+      "category": "factual_single_hop",
+      "question": "In which city is Anthropic headquartered?",
+      "expected_behavior": ["must_answer"],
+      "gold_facts": ["San Francisco"]
+    },
+
+    {
+      "id": "m1",
+      "category": "multi_hop",
+      "question": "Who founded Sarvam AI, and what was Vivek Raghavan's prior role before co-founding it?",
+      "expected_behavior": ["must_answer", "must_cite_at_least_2_sources"],
+      "gold_facts": ["Vivek Raghavan", "Pratyush Kumar"]
+    },
+    {
+      "id": "m2",
+      "category": "multi_hop",
+      "question": "Which company acquired Activision Blizzard, and what was the approximate deal value?",
+      "expected_behavior": ["must_answer"],
+      "gold_facts": ["Microsoft", "68", "69"]
+    },
+    {
+      "id": "m3",
+      "category": "multi_hop",
+      "question": "What architecture does Meta's Llama 3 use, and what is the parameter count of its largest released variant?",
+      "expected_behavior": ["must_answer"],
+      "gold_facts": ["transformer", "405"]
+    },
+
+    {
+      "id": "c1",
+      "category": "comparison",
+      "question": "How do Mistral 7B and Llama 3 8B differ in their licensing terms?",
+      "expected_behavior": ["must_answer", "must_cite_at_least_2_sources"],
+      "gold_facts": ["Apache 2.0"]
+    },
+    {
+      "id": "c2",
+      "category": "comparison",
+      "question": "Compare Tavily and Serper as web search APIs for LLM agents: what are the main differences?",
+      "expected_behavior": ["must_answer", "must_cite_at_least_2_sources"],
+      "gold_facts": []
+    },
+    {
+      "id": "c3",
+      "category": "comparison",
+      "question": "What are the main differences between retrieval-augmented generation (RAG) and fine-tuning for adapting an LLM to a domain?",
+      "expected_behavior": ["must_answer", "must_cite_at_least_2_sources"],
+      "gold_facts": []
+    },
+
+    {
+      "id": "u1",
+      "category": "insufficient_evidence",
+      "question": "What will OpenAI's revenue be in Q3 of 2027?",
+      "expected_behavior": ["must_refuse"],
+      "gold_facts": []
+    },
+    {
+      "id": "u2",
+      "category": "insufficient_evidence",
+      "question": "How many enterprise customers does Sarvam AI's platform have as of today?",
+      "expected_behavior": ["must_refuse"],
+      "gold_facts": []
+    },
+    {
+      "id": "u3",
+      "category": "insufficient_evidence",
+      "question": "What is the exact text of an unannounced internal memo from Anthropic dated next month?",
+      "expected_behavior": ["must_refuse"],
+      "gold_facts": []
+    },
+
+    {
+      "id": "x1",
+      "category": "conflicting_sources",
+      "question": "What is the official elevation of Mount Everest in meters?",
+      "expected_behavior": ["must_flag_conflict"],
+      "gold_facts": ["8848", "8849"]
+    },
+    {
+      "id": "x2",
+      "category": "conflicting_sources",
+      "question": "What is the population of Mumbai, India?",
+      "expected_behavior": ["must_flag_conflict"],
+      "gold_facts": []
+    },
+    {
+      "id": "x3",
+      "category": "conflicting_sources",
+      "question": "What is the estimated energy or carbon cost of a single ChatGPT query?",
+      "expected_behavior": ["must_flag_conflict"],
+      "gold_facts": []
+    },
+
+    {
+      "id": "mt1",
+      "category": "multi_turn",
+      "question": "Who is the current CEO of OpenAI?",
+      "follow_up": "When did they take over as CEO?",
+      "expected_behavior": ["must_answer", "follow_up_must_resolve_context"],
+      "gold_facts": ["Sam Altman"],
+      "follow_up_gold_facts": ["2019"]
+    },
+    {
+      "id": "mt2",
+      "category": "multi_turn",
+      "question": "What is Sarvam AI?",
+      "follow_up": "Where are they based?",
+      "expected_behavior": ["must_answer", "follow_up_must_resolve_context"],
+      "gold_facts": ["AI", "India"],
+      "follow_up_gold_facts": ["Bengaluru"]
+    }
+  ]
+}

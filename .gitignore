@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/
+*.db
+.streamlit/secrets.toml
+.pytest_cache/
+.DS_Store
+eval/results/
+
+# build artifact + runtime
+*.zip
+README.pdf
