@@ -8,6 +8,7 @@ Why this shape: the agent loop should not know which provider answered.
 Lets us demo provider-fallback in interview without touching call sites.
 """
 from __future__ import annotations
+import logging
 import time
 from typing import Iterator
 
@@ -16,6 +17,9 @@ from google import genai
 from google.genai import types as gtypes
 
 from config import GROQ_API_KEY, GEMINI_API_KEY, GROQ_MODEL, GEMINI_MODEL
+
+
+log = logging.getLogger(__name__)
 
 
 class LLMError(Exception):
@@ -64,14 +68,14 @@ def complete(messages: list[dict], temperature: float = 0.2,
     """Returns (text, provider_used)."""
     order = ["groq", "gemini"] if prefer == "groq" else ["gemini", "groq"]
     last_err = None
-    for provider in order:
+    for attempt, provider in enumerate(order):
         try:
             if provider == "groq":
                 resp = _groq_client().chat.completions.create(
                     model=GROQ_MODEL, messages=messages,
                     temperature=temperature, max_tokens=max_tokens,
                 )
-                return resp.choices[0].message.content or "", "groq"
+                text, model = resp.choices[0].message.content or "", GROQ_MODEL
             else:
                 system, contents = _msgs_to_gemini(messages)
                 resp = _gemini_client().models.generate_content(
@@ -83,11 +87,25 @@ def complete(messages: list[dict], temperature: float = 0.2,
                         max_output_tokens=max_tokens,
                     ),
                 )
-                return (resp.text or ""), "gemini"
+                text, model = (resp.text or ""), GEMINI_MODEL
+
+            if attempt > 0:
+                log.warning("LLM fallback: %s answered after %s failed",
+                            provider, order[0])
+            if not text.strip():
+                # Reasoning models spend part of max_tokens on thinking before
+                # emitting text, so a budget that is too small comes back empty
+                # with no error at all.
+                log.warning("LLM empty response from %s (model=%s, "
+                            "max_tokens=%d)", provider, model, max_tokens)
+            return text, provider
         except Exception as e:
+            log.warning("LLM provider %s failed: %s: %s",
+                        provider, type(e).__name__, e)
             last_err = e
             time.sleep(0.5)
             continue
+    log.error("LLM all providers failed; last error: %s", last_err)
     raise LLMError(f"All providers failed; last error: {last_err}")
 
 
@@ -98,7 +116,7 @@ def stream(messages: list[dict], temperature: float = 0.2,
     streaming response on overload)."""
     order = ["groq", "gemini"] if prefer == "groq" else ["gemini", "groq"]
     last_err = None
-    for provider in order:
+    for attempt, provider in enumerate(order):
         try:
             yielded_any = False
             if provider == "groq":
@@ -127,10 +145,18 @@ def stream(messages: list[dict], temperature: float = 0.2,
                         yielded_any = True
                         yield chunk.text
             if yielded_any:
+                if attempt > 0:
+                    log.warning("LLM stream fallback: %s answered after %s failed",
+                                provider, order[0])
                 return
             #zero chunks AND no exception- treat as silent failure, try next provider
+            log.warning("LLM stream from %s returned 0 chunks (no error raised)",
+                        provider)
             last_err = RuntimeError(f"{provider} stream returned 0 chunks")
         except Exception as e:
+            log.warning("LLM stream provider %s failed: %s: %s",
+                        provider, type(e).__name__, e)
             last_err = e
             continue
+    log.error("LLM stream all providers failed; last error: %s", last_err)
     raise LLMError(f"All providers failed; last error: {last_err}")
