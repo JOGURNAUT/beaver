@@ -1,0 +1,36 @@
+# keep secrets, local state and build junk out of the image
+.git
+.gitignore
+.venv
+venv
+env
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+
+# secrets — these go in as Container Apps secrets, never baked into the image
+.env
+.streamlit/secrets.toml
+
+# local database and eval output
+data/
+*.db
+*.sqlite
+*.sqlite3
+eval/results/
+eval/output/
+
+# build artefacts
+*.pdf
+*.zip
+build_zip.py
+make_pdf.py
+dist/
+build/
+
+# editor / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
