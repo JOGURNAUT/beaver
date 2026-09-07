@@ -1,0 +1,10 @@
+# Test-only dependencies. Kept out of requirements.txt so the container image
+# does not ship a test runner it never invokes.
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   python -m pytest tests/ -q
+#
+# The tests in tests/ stub out the embedding model and the tokenizer, so they
+# need no API keys, no network and no model download.
+
+pytest>=8.0
