@@ -41,8 +41,12 @@ streamlit run ui/app.py
 python cli.py
 
 # Run the evaluation harness
-python eval/run_eval.py            # all 15 questions, ~10 min
+python eval/run_eval.py            # all 17 questions, ~10 min
 python eval/run_eval.py --limit 2  # quick smoke
+
+# Unit tests (no API keys, no network, ~1s)
+pip install -r requirements-dev.txt
+python -m pytest tests/ -q
 ```
 
 ---
@@ -155,10 +159,13 @@ storage/
 ui/
   app.py               # Streamlit chat + live progress + session switcher
 eval/
-  dataset/questions.json   # 15 questions across 5 categories
+  dataset/questions.json   # 17 questions across 6 categories
   judge.py             # LLM-as-judge primitives (Gemini judges Groq outputs)
   metrics.py           # score_turn() + aggregate()
   run_eval.py          # runner; writes results.json, summary.json, report.md
+tests/
+  test_citations.py    # marker mapping + hallucinated-marker stripping
+  test_selector.py     # chunking, recency, cosine, budget walk (embedder stubbed)
 cli.py                 # CLI entrypoint (mirrors UI behavior)
 config.py              # env-driven config (tokens, timeouts, model names)
 smoke_test.py          # 4-check sanity script
@@ -257,7 +264,7 @@ accurate estimate.
 
 ### Methodology
 
-15 questions across 5 categories (3 each). Each question is tagged with an `expected_behavior` (e.g., `must_refuse`, `must_flag_conflict`, `must_cite_at_least_2_sources`), and only metrics relevant to those tags are computed. A factual lookup is not scored on "refusal correctness"; a future-revenue question is not scored on "faithfulness". This avoids penalizing the agent on metrics that don't apply.
+17 questions across 6 categories (3 each, except 2 multi-turn). Each question is tagged with an `expected_behavior` (e.g., `must_refuse`, `must_flag_conflict`, `must_cite_at_least_2_sources`), and only metrics relevant to those tags are computed. A factual lookup is not scored on "refusal correctness"; a future-revenue question is not scored on "faithfulness". This avoids penalizing the agent on metrics that don't apply.
 
 **Judges.** Gemini-2.5-flash judges Groq-Llama outputs, always at temperature 0. Cross-model judging reduces the self-grading bias that plagues same-model evals. When a judge fails to return parseable JSON, the metric is recorded as `null` (skipped in aggregates) rather than `0` (which would conflate failures with bad answers).
 
@@ -272,10 +279,14 @@ accurate estimate.
 | `comparison` | 3 | Source diversity + faithfulness on contrastive Qs |
 | `insufficient_evidence` | 3 | Refusal behavior on questions with no public answer |
 | `conflicting_sources` | 3 | Whether the agent flags disagreement and cites both sides |
+| `multi_turn` | 2 | Whether a follow-up resolves against the prior turn. The follow-up runs in the *same* session, so this measures context carry-over rather than a cold question |
 
 ### Results
 
-Headline numbers from the most recent eval run (15 questions). Re-run with `python eval/run_eval.py` to regenerate.
+Headline numbers from a **15-question run**, taken before the two multi-turn
+questions were added. The dataset is now 17 questions across 6 categories, so these
+figures do not cover the multi-turn category. Re-run with `python eval/run_eval.py`
+to regenerate against the current set.
 
 | Metric | Overall | Reading |
 |---|---|---|
@@ -332,7 +343,10 @@ Beyond the 15-question scored eval, I ran a small targeted qualitative probe acr
 
 ### Multi-turn evidence
 
-The automated 15-Q eval runs each question in a fresh session and does not unit-test multi-turn behavior. Multi-turn robustness is therefore evidenced by:
+Multi-turn is now in the harness: two questions carry a `follow_up`, and
+`run_eval.py` runs it in the **same session** so context carry-over is what is being
+scored. The published numbers above predate those questions. Multi-turn behaviour is
+additionally evidenced by:
 - The qualitative table above (Sam Altman → "when did they take over?" - pronoun resolved correctly)
 - The Sarvam-AI example conversation in the "Example conversations" section earlier in this README (multi-turn "Have they raised funding?" correctly inferred Sarvam from prior turn)
 - The agent loop's documented context-passing path (`agent/planner.py` receives last 2 prior turns; full conversation is available to the answer LLM via `agent/context_builder.py`)
@@ -346,13 +360,13 @@ Adding multi-turn sequences to the automated harness is listed under Future Impr
 - **Over-grounding on common facts when search misses.** The system intentionally biases toward strict snippet-grounding to prevent URL hallucination. A consequence found during my own testing: on widely-documented public facts where Tavily returns tangential results (e.g., asking about a public figure's spouse after a session of hallucination-trick questions), the agent refuses rather than answering from prior knowledge. The clean v2 fix is a dual-mode answer that says *"no snippet evidence found, but this is widely-documented public information…"* - preserving the URL-hallucination guarantee while restoring usefulness on common-knowledge questions.
 - **Session contamination of the planner.** The planner sees the last 2 turns' Q+A to resolve pronouns. When a session has accumulated unusual prior content (e.g., several hallucination-trick questions), the planner can produce off-target search queries for an unrelated next question. A fresh session usually answers the same question correctly. Mitigation would be a planner that classifies whether the new question is topically related to recent turns before pulling them in as context.
 - **Recency signal is metadata-only.** The selector now uses a gentle recency multiplier (`score = cosine * (0.7 + 0.3 * recency_factor)`) where `recency_factor` decays linearly from 1.0 today to 0.3 floor at ~2 years. Pages with no extractable publish date get a neutral 0.5. The publish date is pulled from trafilatura's metadata, which is missing on ~20-30% of real pages. A v2 improvement would add a URL-pattern fallback (e.g., `/2024/07/...`) and a body-text date regex as a last resort. The current implementation is gentle by design: a strong-cosine old article still beats a weak-cosine fresh one.
-- **Multi-turn not in the automated eval harness.** The 15-question scored eval runs each question in a fresh session. Multi-turn behavior is verified qualitatively (see the Sam Altman case under Qualitative observations and the Sarvam follow-up under Example conversations) but not measured. Adding 2-3 multi-turn sequences with explicit context-resolution checks would close this gap.
+- **Multi-turn is measured but not yet reported.** Two `multi_turn` questions were added to the dataset and `run_eval.py` runs each follow-up in the same session, which closes the gap this section previously described. The headline table above still comes from the earlier 15-question run, so the category has no published score yet.
 - **Single search provider** (Tavily). No automatic fallback to Serper or Brave on 429.
 - **No retrieval cache.** Repeated queries pay full search + fetch cost.
 - **Rolling summary is single-shot.** Long sessions could compound paraphrase loss; a tiered summary would help.
 - **No per-domain authority weighting.** A Reddit comment and a peer-reviewed paper get equal ranking weight pre-citation.
 - **Latency is dominated by serial page fetch.** Parallel fetch helps but a slow URL still stalls its slot.
-- **Eval dataset is small (15)** and Western/English biased. Production deployment would need a domain-specific eval set and adversarial cases (prompt injection in fetched pages).
+- **Eval dataset is small (17)** and Western/English biased. Production deployment would need a domain-specific eval set and adversarial cases (prompt injection in fetched pages).
 
 ## Future improvements
 
@@ -378,6 +392,6 @@ Beyond the two highlighted in the design note:
 
 ## Assumptions
 
-- Free-tier API limits are sufficient for demo: Groq (~30 req/min Llama 3.3 70B), Gemini (15 req/min flash), Tavily (1000 req/mo).
+- Free-tier API limits are sufficient for demo: Groq (~30 req/min), Gemini (15 req/min flash), Tavily (1000 req/mo). The Groq model is set by `GROQ_MODEL` rather than hardcoded, because Groq retires models: the original `llama-3.3-70b-versatile` now 404s and the default is `openai/gpt-oss-120b`.
 - Today's "correct answer" for any web-research question may not be tomorrow's. The eval methodology accommodates this by using LLM-judges over evidence rather than gold-string matching.
 - The agent is built for English queries on the public web. Localization, paywalled content, and authenticated sources are out of scope for this submission.
