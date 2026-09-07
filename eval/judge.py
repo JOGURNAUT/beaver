@@ -30,19 +30,49 @@ def _extract_json(text: str) -> dict:
 
 
 def _ask_judge(system: str, user: str, max_tokens: int = 600) -> dict:
-    """Always uses Gemini, temperature 0. Returns parsed JSON or {error:...}."""
-    try:
-        text, _ = llm.complete(
-            [{"role": "system", "content": system},
-             {"role": "user", "content": user}],
-            temperature=0.0, max_tokens=max_tokens, prefer="gemini",
-        )
-    except Exception as e:
-        return {"error": f"judge_call_failed: {e}"}
-    parsed = _extract_json(text)
-    if not parsed:
-        return {"error": "judge_returned_unparseable", "raw": text[:500]}
-    return parsed
+    """Always uses Gemini, temperature 0. Returns parsed JSON or {error:...}.
+
+    Gemini only, deliberately - and this is the important part.
+
+    llm.complete() normally falls back to the other provider. For the judge
+    that is not a degradation, it is a different experiment: the fallback is
+    Groq, which is the model being evaluated, so a rate-limited Gemini turns
+    cross-model judging into self-grading without changing anything visible in
+    the output. A run of this harness did exactly that once Groq's daily token
+    limit and Gemini's per-minute limit collided. Passing a single-element
+    order makes a judge outage record as a missing score, which aggregate()
+    now surfaces as incomplete coverage.
+
+    Retries once with a much larger budget when the first call comes back
+    unparseable.
+
+    gemini-2.5-flash is a reasoning model: it spends part of max_tokens
+    thinking before it emits any text at all. So a budget that is generous for
+    the JSON itself can still return an empty string, or a response truncated
+    to "{\n" - which is exactly what a run of this harness produced, silently,
+    on the hardest three questions. Thinking cost scales with how tangled the
+    input is, not with how long the answer needs to be, so sizing every caller
+    for its worst case wastes tokens on the easy ones. Retrying only the
+    failures is cheaper.
+    """
+    attempts = (max_tokens, max_tokens * 3)
+    text = ""
+    for budget in attempts:
+        try:
+            text, _ = llm.complete(
+                [{"role": "system", "content": system},
+                 {"role": "user", "content": user}],
+                temperature=0.0, max_tokens=budget,
+                order=["gemini"],   # no fallback: see _JUDGE_PROVIDER note
+            )
+        except Exception as e:
+            return {"error": f"judge_call_failed: {e}"}
+        parsed = _extract_json(text)
+        if parsed:
+            return parsed
+    return {"error": "judge_returned_unparseable",
+            "raw": text[:500],
+            "budgets_tried": list(attempts)}
 
 
 # ---------------------------------------------------------------------------
@@ -134,7 +164,7 @@ Reply ONLY with JSON:
 
 def judge_relevance(question: str, answer: str) -> dict:
     user = f"Question: {question}\n\nAnswer:\n{answer}"
-    out = _ask_judge(_REL_SYSTEM, user, max_tokens=200)
+    out = _ask_judge(_REL_SYSTEM, user, max_tokens=400)
     if "score" not in out:
         out["score"] = None
     return out
@@ -168,7 +198,7 @@ def judge_refusal(question: str, answer: str) -> dict:
            "counts as refused. "
            'Reply ONLY with JSON: {"refused": true|false, "reason": "..."}')
     user = f"Question: {question}\n\nAnswer:\n{answer}"
-    out = _ask_judge(sys, user, max_tokens=150)
+    out = _ask_judge(sys, user, max_tokens=400)
     if "refused" not in out:
         return {"score": None, "keyword_hit": keyword_hit, "llm_refused": None,
                 "reason": "judge_failed"}
@@ -207,7 +237,7 @@ def judge_conflict(question: str, answer: str) -> dict:
            "cites more than one source in service of that. "
            'Reply ONLY with JSON: {"flagged": true|false, "reason": "..."}')
     user = f"Question: {question}\n\nAnswer:\n{answer}"
-    out = _ask_judge(sys, user, max_tokens=150)
+    out = _ask_judge(sys, user, max_tokens=400)
     if "flagged" not in out:
         return {"score": None, "keyword_hit": keyword_hit, "llm_flagged": None,
                 "reason": "judge_failed"}
@@ -267,7 +297,7 @@ def judge_context_resolution(main_question: str, main_answer: str,
         f"FOLLOW-UP question: {follow_up_question}\n"
         f"FOLLOW-UP answer: {follow_up_answer[:600]}"
     )
-    out = _ask_judge(_CTX_SYSTEM, user, max_tokens=200)
+    out = _ask_judge(_CTX_SYSTEM, user, max_tokens=400)
     if "resolved" not in out:
         return {"score": None, "reason": "judge_failed"}
     return {"score": 1.0 if bool(out["resolved"]) else 0.0,

@@ -64,9 +64,17 @@ def _msgs_to_gemini(messages: list[dict]) -> tuple[str, list[gtypes.Content]]:
 
 
 def complete(messages: list[dict], temperature: float = 0.2,
-             max_tokens: int = 1024, prefer: str = "groq") -> tuple[str, str]:
-    """Returns (text, provider_used)."""
-    order = ["groq", "gemini"] if prefer == "groq" else ["gemini", "groq"]
+             max_tokens: int = 1024, prefer: str = "groq",
+             order: list[str] | None = None) -> tuple[str, str]:
+    """Returns (text, provider_used).
+
+    `order` overrides the fallback chain. Pass a single-element list when a
+    fallback would be wrong rather than merely slower - the eval judge does
+    this, because falling back to the model under evaluation turns
+    cross-model judging into self-grading.
+    """
+    if order is None:
+        order = ["groq", "gemini"] if prefer == "groq" else ["gemini", "groq"]
     last_err = None
     for attempt, provider in enumerate(order):
         try:

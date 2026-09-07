@@ -72,11 +72,52 @@ def score_turn(q: dict, agent_output: dict) -> dict[str, Any]:
     return result
 
 
+# Which judge produces each metric, so a failure can be attributed to one.
+_METRIC_SOURCES = {
+    "relevance": ("relevance", "score"),
+    "faithfulness": ("faithfulness", "score"),
+    "citation_precision": ("citation_precision", "precision"),
+    "refusal_score": ("refusal", "score"),
+    "conflict_score": ("conflict", "score"),
+    "context_resolution": ("context_resolution", "score"),
+}
+
+
+def judge_failures(results: list[dict]) -> list[dict]:
+    """Every case where a judge was asked for a metric and did not return one.
+
+    These are the cases aggregate() would otherwise drop. They matter more than
+    the ones that scored: a judge is most likely to fail on the answers that are
+    long, contradictory or hedged, which are exactly the hard cases. Dropping
+    them quietly biases every mean upward.
+    """
+    out = []
+    for r in results:
+        for metric, (block, field) in _METRIC_SOURCES.items():
+            if block not in r:
+                continue                      # judge was never applicable here
+            payload = r[block] or {}
+            if payload.get(field) is None:
+                out.append({
+                    "id": r.get("id"),
+                    "category": r.get("category"),
+                    "metric": metric,
+                    "reason": payload.get("error") or payload.get("reason") or "no_score",
+                })
+    return out
+
+
 def aggregate(results: list[dict]) -> dict[str, Any]:
-    """Roll up per-question results into headline numbers grouped by category."""
+    """Roll up per-question results into headline numbers grouped by category.
+
+    Every mean is reported with the count behind it, because a mean over an
+    unknown denominator is not a measurement. "1.0" reads very differently once
+    you can see it was 1.0 over nine of eleven applicable cases.
+    """
     def avg(values):
         vs = [v for v in values if v is not None]
         return round(sum(vs) / len(vs), 3) if vs else None
+
 
     by_cat: dict[str, list[dict]] = {}
     for r in results:
@@ -97,6 +138,22 @@ def aggregate(results: list[dict]) -> dict[str, Any]:
         "avg_latency_ms": avg([r.get("latency_ms") for r in results]),
         "avg_unique_domains_per_answer": avg([r.get("n_unique_domains") for r in results]),
     }
+
+    # How many cases each mean is actually built from. Anything where scored is
+    # less than applicable means a judge failed and the mean silently excluded
+    # that case.
+    headline["coverage"] = {}
+    for metric, (block, field) in _METRIC_SOURCES.items():
+        applicable = [r for r in results if block in r]
+        scored = [r for r in applicable if (r[block] or {}).get(field) is not None]
+        if applicable:
+            headline["coverage"][metric] = {
+                "scored": len(scored),
+                "applicable": len(applicable),
+                "complete": len(scored) == len(applicable),
+            }
+
+    headline["judge_failures"] = judge_failures(results)
 
     headline["by_category"] = {}
     for cat, rs in by_cat.items():
