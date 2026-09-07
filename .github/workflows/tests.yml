@@ -1,0 +1,37 @@
+name: tests
+
+# Runs the unit suite in tests/ only.
+#
+# smoke_test.py and eval/run_eval.py are deliberately not here: both call Groq,
+# Gemini and Tavily, so they need live API keys and cost quota on every push.
+# The unit tests stub the embedder and the tokenizer, so they need no secrets
+# and no network.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # CPU-only torch before anything else. sentence-transformers pulls torch
+      # transitively and the default wheel is the CUDA build, which is several
+      # gigabytes for a 384-dimension model that only ever runs on CPU. Same
+      # reasoning as the Dockerfile.
+      - name: Install CPU-only torch
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: python -m pytest tests/ -q
