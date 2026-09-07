@@ -1,9 +1,13 @@
 """Gradio UI for the Deep Research Agent.
 
 Alternative to the Streamlit UI- more reliable streaming + chat interface.
+Both UIs consume the same agent generator, so agent/loop.py stays UI-agnostic.
 
-Run with: python ui/gradio_app.py
-Opens at http://localhost:7860 (or whichever Gradio picks)
+Gradio is an optional dependency, deliberately not in requirements.txt- the
+deployed container only ever serves the Streamlit UI.
+
+    pip install -r requirements-gradio.txt
+    python ui/gradio_app.py        # http://localhost:7860
 """
 from __future__ import annotations
 import sys

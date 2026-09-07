@@ -1,0 +1,17 @@
+# Optional second UI. Not in requirements.txt on purpose.
+#
+# ui/gradio_app.py is an alternative front end to ui/app.py. Both are driven by
+# the same agent generator, which is the point of keeping it — it demonstrates
+# that agent/loop.py has no UI coupling.
+#
+# It is kept out of the main requirements because the container image only ever
+# serves the Streamlit UI, and gradio pulls a large dependency tree that would
+# ship unused.
+#
+#   pip install -r requirements-gradio.txt
+#   python ui/gradio_app.py
+#
+# Pinned to 4.x: the file builds its chat history in the tuples format, which
+# gradio 5 deprecates in favour of the messages format.
+
+gradio>=4.44,<5
